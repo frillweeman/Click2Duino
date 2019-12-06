@@ -6,14 +6,14 @@ Color green(0, 255, 0);
 Color orange(255, 165, 0);
 Color off(0, 0, 0);
 
-struct Pins
+enum Pins
 {
-  int BUTTON = 2;
-  int RELAY = 7;
-  int GREEN = 9;
-  int BLUE = 10;
-  int RED = 11;
-} pins;
+  BUTTON = 2,
+  RELAY = 7,
+  GREEN = 9,
+  BLUE = 10,
+  RED = 11
+};
 
 // C2E Activation Sequence
 const int HOLD_TIME = 1500;
@@ -22,14 +22,14 @@ const int RELEASE_TIME = 1000;
 void setup()
 {
   // set pin modes
-  pinMode(pins.BLUE, OUTPUT);
-  pinMode(pins.RED, OUTPUT);
-  pinMode(pins.GREEN, OUTPUT);
-  pinMode(pins.RELAY, OUTPUT);
-  pinMode(pins.BUTTON, INPUT_PULLUP);
+  pinMode(BLUE, OUTPUT);
+  pinMode(RED, OUTPUT);
+  pinMode(GREEN, OUTPUT);
+  pinMode(RELAY, OUTPUT);
+  pinMode(BUTTON, INPUT_PULLUP);
 
   // output initializations
-  digitalWrite(pins.RELAY, LOW);
+  digitalWrite(RELAY, LOW);
   setLED(green);
 }
 
@@ -80,7 +80,7 @@ void loop()
     // TRIGGERED
 
     // activate relay (gate)
-    digitalWrite(pins.RELAY, HIGH);
+    digitalWrite(RELAY, HIGH);
 
     // flash red LED to indicate triggered
     for (int i = 0; i < 6; ++i)
@@ -92,7 +92,7 @@ void loop()
     }
 
     // deactivate relay (gate)
-    digitalWrite(pins.RELAY, LOW);
+    digitalWrite(RELAY, LOW);
 
     // reset
     setLED(green);
@@ -101,12 +101,12 @@ void loop()
 
 bool isSignal()
 {
-  return !digitalRead(pins.BUTTON);
+  return !digitalRead(BUTTON);
 }
 
 void setLED(Color color)
 {
-  analogWrite(pins.RED, color.red);
-  analogWrite(pins.GREEN, color.green);
-  analogWrite(pins.BLUE, color.blue);
+  analogWrite(RED, color.red);
+  analogWrite(GREEN, color.green);
+  analogWrite(BLUE, color.blue);
 }
