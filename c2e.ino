@@ -1,4 +1,8 @@
 #include "Color.cpp"
+#include "RadioModule.cpp"
+
+#define RADIO_PIN A7 // analog
+#define SAMPLES_PER_AVG 10
 
 // define standard colors
 Color red(255, 0, 0);
@@ -6,18 +10,32 @@ Color green(0, 255, 0);
 Color orange(255, 165, 0);
 Color off(0, 0, 0);
 
+RadioModule radio(RADIO_PIN, SAMPLES_PER_AVG);
+
 enum Pins
 {
-  BUTTON = 2,
   RELAY = 7,
   GREEN = 9,
   BLUE = 10,
   RED = 11
 };
 
+enum State
+{
+  IDLE,
+  ACTIVATING,
+  RELEASE_CHECK,
+  ACTIVATED,
+  ERROR
+} state,
+    lastState;
+
 // C2E Activation Sequence
 const int HOLD_TIME = 1500;
 const int RELEASE_TIME = 1000;
+
+unsigned long startHoldTime;
+unsigned long startReleaseTime;
 
 void setup()
 {
@@ -26,82 +44,149 @@ void setup()
   pinMode(RED, OUTPUT);
   pinMode(GREEN, OUTPUT);
   pinMode(RELAY, OUTPUT);
-  pinMode(BUTTON, INPUT_PULLUP);
 
   // output initializations
   digitalWrite(RELAY, LOW);
   setLED(green);
+
+  state = IDLE;
+  lastState = IDLE;
+
+  // debug
+  Serial.begin(9600);
 }
 
 void loop()
 {
-  // when radio signal is detected
-  if (isSignal())
+  // poll the radio module for signal
+  radio.update();
+
+  State beforeChange = state;
+
+  Serial.println(radio.getAverageValue());
+
+  switch (state)
   {
+  case IDLE:
+    idle();
+    break;
+  case ACTIVATING:
+    activating();
+    break;
+  case RELEASE_CHECK:
+    release_check();
+    break;
+  case ACTIVATED:
+    activated();
+    break;
+  case ERROR:
+    error();
+    break;
+  }
+
+  lastState = beforeChange;
+  delay(10);
+}
+
+void setState(State newState)
+{
+  state = newState;
+}
+
+void idle()
+{
+  setLED(green);
+  if (radio.isTriggered())
+  {
+    state = ACTIVATING;
+    return;
+  }
+}
+
+void activating()
+{
+  if (lastState != ACTIVATING)
+  {
+    Serial.println("Activating rising edge");
     // set LED to red
     setLED(red);
 
     // check for continuous press for HOLD_TIME ms
-    for (int i = 0; i < HOLD_TIME / 10; ++i)
-    {
-      if (!isSignal())
-      {
-        // reset if released
-        setLED(green);
-        return;
-      }
-      delay(10);
-    }
+    startHoldTime = millis();
+  }
 
-    // held for correct length of time
+  // if radio key released, return to idle
+  if (!radio.isTriggered())
+  {
+    state = IDLE;
+    return;
+  }
 
-    // turn LED off
-    setLED(off);
-
-    // wait for user to release radio PTT within RELEASE_TIME ms
-    unsigned long releaseTime = millis();
-    while (isSignal() && millis() - releaseTime <= RELEASE_TIME)
-      delay(1);
-
-    // if PTT held down too long
-    if (isSignal())
-    {
-      // error LED and reset
-      setLED(orange);
-      unsigned long startError = millis();
-      while (isSignal())
-        ;
-      while (millis() - startError <= 2000)
-        ;
-      setLED(green);
-      return;
-    }
-
-    // TRIGGERED
-
-    // activate relay (gate)
-    digitalWrite(RELAY, HIGH);
-
-    // flash red LED to indicate triggered
-    for (int i = 0; i < 6; ++i)
-    {
-      setLED(red);
-      delay(150);
-      setLED(off);
-      delay(150);
-    }
-
-    // deactivate relay (gate)
-    digitalWrite(RELAY, LOW);
-
-    // reset
-    setLED(green);
+  // if not released and time elapsed, advance state
+  if (millis() - startHoldTime > HOLD_TIME)
+  {
+    Serial.println("entering release check");
+    state = RELEASE_CHECK;
+    return;
   }
 }
 
-bool isSignal()
+void release_check()
 {
-  return !digitalRead(BUTTON);
+  if (lastState != RELEASE_CHECK)
+  {
+    Serial.println("turning LED off");
+    setLED(off);
+    startReleaseTime = millis();
+  }
+
+  const unsigned long howLong = millis() - startReleaseTime;
+
+  // check if time elapsed
+  if (millis() - startReleaseTime > RELEASE_TIME)
+  {
+    if (radio.getAverageValue() != 1)
+    {
+      Serial.println("held down too long");
+      state = ERROR;
+      return;
+    }
+  }
+  else if (radio.getAverageValue() == 1)
+  {
+    Serial.println("released within required time");
+    // time has not elapsed and released
+    state = ACTIVATED;
+    return;
+  }
+}
+
+void activated()
+{
+  // activate relay (gate)
+  digitalWrite(RELAY, HIGH);
+
+  // flash red LED to indicate triggered
+  for (int i = 0; i < 6; ++i)
+  {
+    setLED(red);
+    delay(150);
+    setLED(off);
+    delay(150);
+  }
+
+  // deactivate relay (gate)
+  digitalWrite(RELAY, LOW);
+
+  // reset
+  state = IDLE;
+}
+
+void error()
+{
+  setLED(orange);
+  delay(3000);
+  state = IDLE;
 }
 
 void setLED(Color color)
